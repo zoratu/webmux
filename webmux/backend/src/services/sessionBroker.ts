@@ -76,8 +76,9 @@ export class SessionBroker extends EventEmitter {
       }
     }
 
-    // Determine layout position (scoped to this owner's sessions)
-    const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner);
+    // Determine layout position (scoped to this owner's *visible* sessions —
+    // minimized tiles are off-grid and shouldn't push new tiles to higher columns).
+    const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !s.minimized);
     const { row, col } = nextPositionFor(ownerSessions, req.row, req.col);
 
     // Determine transport: use mosh if host allows it and config prefers it
@@ -233,7 +234,9 @@ export class SessionBroker extends EventEmitter {
     this.sessions.delete(sessionId);
     this.scrollback.delete(sessionId);
     if (owner) {
-      const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner);
+      // Compact only the visible layout — minimized tiles keep their stored (row, col)
+      // as advisory "restore here if possible" coordinates.
+      const ownerSessions = Array.from(this.sessions.values()).filter(s => s.owner === owner && !s.minimized);
       compactPositions(ownerSessions);
     }
     this.persistSessions();

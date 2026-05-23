@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Tile } from './Tile';
+import { WorkspaceMinimap } from './WorkspaceMinimap';
 import { ConnectionDialog } from './ConnectionDialog';
 import { api } from '../utils/api';
-import type { Session, CreateSessionRequest } from '../types';
+import type { Session, CreateSessionRequest, NamedTheme } from '../types';
+import { loadSessionThemeOverrides, saveSessionThemeOverrides } from '../utils/themes';
 
 interface WorkspaceProps {
   fontSize: number;
@@ -102,9 +104,11 @@ interface WorkspaceExtraProps {
   globalLock: boolean;
   globalLockVersion: number;
   onGlobalLockChange: (on: boolean) => void;
+  themes?: NamedTheme[];
+  globalTheme?: string | null;
 }
 
-export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, globalAutoScrollVersion, onGlobalAutoScrollChange, globalLock, globalLockVersion, onGlobalLockChange }: WorkspaceProps & WorkspaceExtraProps) {
+export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, globalAutoScrollVersion, onGlobalAutoScrollChange, globalLock, globalLockVersion, onGlobalLockChange, themes = [], globalTheme = null }: WorkspaceProps & WorkspaceExtraProps) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogPos, setDialogPos] = useState<{ row: number; col: number } | null>(null);
@@ -112,12 +116,14 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
   const [lockOverrides, setLockOverrides] = useState<Map<string, boolean>>(new Map());
   const [bellSessions, setBellSessions] = useState<Set<string>>(new Set());
   const [collapsedSessions, setCollapsedSessions] = useState<Set<string>>(new Set());
+  const [themeOverrides, setThemeOverrides] = useState<Map<string, string>>(() => loadSessionThemeOverrides());
 
   // Drag state
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{ row: number; col: number } | null>(null);
   const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
   const gridRef = useRef<HTMLDivElement>(null);
+  const outerRef = useRef<HTMLDivElement>(null);
 
   // Refs for use in event handlers (avoid stale closures)
   const sessionsRef = useRef<Session[]>([]);
@@ -163,6 +169,16 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
     api.renameSession(id, title).catch(err => {
       console.error('Rename error:', err);
       api.getSessions().then(setSessions);
+    });
+  }, []);
+
+  const handleThemeChange = useCallback((id: string, theme: string | null) => {
+    setThemeOverrides(prev => {
+      const next = new Map(prev);
+      if (theme) next.set(id, theme);
+      else next.delete(id);
+      saveSessionThemeOverrides(next);
+      return next;
     });
   }, []);
 
@@ -245,33 +261,33 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
         next.delete(sessionId);
         setBellSessions(b => { const nb = new Set(b); nb.delete(sessionId); return nb; });
 
-        // Move restored tile to nearest empty cell adjacent to visible tiles
+        // Restore: prefer the session's original (row, col); if occupied, pick the
+        // top-left-most empty cell within (or just beyond) the current visible bbox.
         const current = sessionsRef.current;
-        const visible = current.filter(s => s.id !== sessionId && !next.has(s.id));
-        const occupied = new Set(visible.map(s => `${s.row},${s.col}`));
+        const session = current.find(s => s.id === sessionId);
+        if (session) {
+          const visible = current.filter(s => s.id !== sessionId && !next.has(s.id));
+          const occupied = new Set(visible.map(s => `${s.row},${s.col}`));
 
-        // Collect candidate cells: all cells adjacent to visible tiles
-        const candidates: { row: number; col: number; dist: number }[] = [];
-        for (const s of visible) {
-          for (const [dr, dc] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
-            const r = s.row + dr;
-            const c = s.col + dc;
-            if (r >= 0 && c >= 0 && !occupied.has(`${r},${c}`)) {
-              // Distance from center of visible tiles
-              const avgRow = visible.reduce((a, v) => a + v.row, 0) / (visible.length || 1);
-              const avgCol = visible.reduce((a, v) => a + v.col, 0) / (visible.length || 1);
-              candidates.push({ row: r, col: c, dist: Math.abs(r - avgRow) + Math.abs(c - avgCol) });
+          let targetRow = session.row;
+          let targetCol = session.col;
+          if (occupied.has(`${targetRow},${targetCol}`)) {
+            const maxRow = visible.length > 0 ? Math.max(...visible.map(s => s.row)) : 0;
+            const maxCol = visible.length > 0 ? Math.max(...visible.map(s => s.col)) : 0;
+            outer: for (let r = 0; r <= maxRow + 1; r++) {
+              for (let c = 0; c <= maxCol + 1; c++) {
+                if (!occupied.has(`${r},${c}`)) {
+                  targetRow = r;
+                  targetCol = c;
+                  break outer;
+                }
+              }
             }
           }
-        }
-        // Sort by distance, pick closest
-        candidates.sort((a, b) => a.dist - b.dist);
-        const target = candidates[0];
-        if (target) {
-          const session = current.find(s => s.id === sessionId);
-          if (session && (session.row !== target.row || session.col !== target.col)) {
-            setSessions(p => p.map(s => s.id === sessionId ? { ...s, row: target.row, col: target.col } : s));
-            api.moveSession(sessionId, target.row, target.col).catch(() => {});
+
+          if (session.row !== targetRow || session.col !== targetCol) {
+            setSessions(p => p.map(s => s.id === sessionId ? { ...s, row: targetRow, col: targetCol } : s));
+            api.moveSession(sessionId, targetRow, targetCol).catch(() => {});
           }
         }
         api.setMinimized(sessionId, false).catch(() => {});
@@ -392,7 +408,8 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
   }
 
   return (
-    <div style={styles.outer}>
+    <div style={styles.shell}>
+    <div ref={outerRef} style={styles.outer}>
       <div style={styles.hint}>Hold Shift to scroll</div>
       {sessions.length > 0 && (
         <div style={styles.dock}>
@@ -464,6 +481,10 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
               onTitleMouseDown={handleTitleMouseDown}
               isDragging={draggingId === session.id}
               isDropTarget={dropTarget?.row === session.row && dropTarget?.col === session.col}
+              themes={themes}
+              globalTheme={globalTheme}
+              themeOverride={themeOverrides.get(session.id) ?? null}
+              onThemeChange={handleThemeChange}
             />
           </div>);
         })}
@@ -504,10 +525,27 @@ export function Workspace({ fontSize, termCols, termRows, globalAutoScroll, glob
         />
       )}
     </div>
+    <WorkspaceMinimap
+      scrollRef={outerRef}
+      sessions={sessions.filter(s => !collapsedSessions.has(s.id))}
+      numCols={numCols}
+      numRows={numRows}
+      tileWidth={tile.w}
+      tileHeight={tile.h}
+      gap={GAP}
+    />
+    </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  shell: {
+    position: 'relative',
+    display: 'flex',
+    flexDirection: 'column',
+    flex: 1,
+    minHeight: 0,
+  },
   outer: {
     flex: 1,
     overflowX: 'auto',

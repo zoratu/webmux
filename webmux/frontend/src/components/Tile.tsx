@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Terminal, type TerminalHandle } from './Terminal';
 import { useInputBroadcast } from '../contexts/InputBroadcastContext';
 import { api } from '../utils/api';
-import type { Session, ConnectionState } from '../types';
+import type { Session, ConnectionState, NamedTheme } from '../types';
 
 interface TileProps {
   session: Session;
@@ -21,9 +21,13 @@ interface TileProps {
   onTitleMouseDown?: (sessionId: string, e: React.MouseEvent) => void;
   isDragging?: boolean;
   isDropTarget?: boolean;
+  themes?: NamedTheme[];
+  globalTheme?: string | null;
+  themeOverride?: string | null;
+  onThemeChange?: (id: string, theme: string | null) => void;
 }
 
-export function Tile({ session, fontSize, autoScroll, onAutoScrollToggle, locked, onLockToggle, collapsed, onToggleCollapse, onBell, onFocus: onTileFocus, onClose, onReconnect, onRename, onTitleMouseDown, isDragging, isDropTarget }: TileProps) {
+export function Tile({ session, fontSize, autoScroll, onAutoScrollToggle, locked, onLockToggle, collapsed, onToggleCollapse, onBell, onFocus: onTileFocus, onClose, onReconnect, onRename, onTitleMouseDown, isDragging, isDropTarget, themes = [], globalTheme = null, themeOverride = null, onThemeChange }: TileProps) {
   const [state, setState] = useState<ConnectionState>(session.state);
   const [viewerCount, setViewerCount] = useState(1);
   const [editing, setEditing] = useState(false);
@@ -190,6 +194,20 @@ export function Tile({ session, fontSize, autoScroll, onAutoScrollToggle, locked
             onClick={() => onLockToggle(session.id)}
             title={locked ? 'Locked (click to unlock)' : 'Unlocked (click to lock)'}
           >{locked ? '\ud83d\udd12' : '\ud83d\udd13'}</button>
+          {themes.length > 0 && onThemeChange && (
+            <select
+              style={styles.themeSelect}
+              value={themeOverride ?? ''}
+              onChange={e => onThemeChange(session.id, e.target.value || null)}
+              title={themeOverride ? `Theme override: ${themeOverride}` : `Using global theme${globalTheme ? ` (${globalTheme})` : ''}`}
+              onMouseDown={e => e.stopPropagation()}
+            >
+              <option value="">{globalTheme ? `\u25bd ${globalTheme}` : '\u25bd (default)'}</option>
+              {themes.map(t => (
+                <option key={t.name} value={t.name}>{t.name}</option>
+              ))}
+            </select>
+          )}
           {(state === 'disconnected' || state === 'error') && (
             <button style={{ ...styles.chromeBtn, color: '#caaa4a' }} onClick={() => onReconnect(session.id)} title="Reconnect">{'\u21ba'}</button>
           )}
@@ -212,6 +230,7 @@ export function Tile({ session, fontSize, autoScroll, onAutoScrollToggle, locked
           onViewerUpdate={handleViewerUpdate}
           onFocusGained={handleFocusGained}
           onBell={() => onBell(session.id)}
+          theme={themes.find(t => t.name === (themeOverride ?? globalTheme))?.theme}
         />
       </div>
     </div>
@@ -300,6 +319,16 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '2px 4px',
     borderRadius: 2,
     lineHeight: 1,
+  },
+  themeSelect: {
+    background: '#1a1a3a',
+    color: '#aaa',
+    border: '1px solid #333366',
+    borderRadius: 3,
+    fontSize: 10,
+    padding: '1px 4px',
+    cursor: 'pointer',
+    maxWidth: 100,
   },
   termContainer: {
     flex: 1,

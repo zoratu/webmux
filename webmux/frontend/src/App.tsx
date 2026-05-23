@@ -9,6 +9,8 @@ import { RegisterDialog } from './components/RegisterDialog';
 import { InputBroadcastProvider } from './contexts/InputBroadcastContext';
 import { WorkspacePaneProvider, useWorkspacePane } from './contexts/WorkspacePaneContext';
 import { api } from './utils/api';
+import type { NamedTheme } from './types';
+import { loadBundledThemes, loadGlobalTheme, saveGlobalTheme } from './utils/themes';
 
 interface AuthenticatedAppProps {
   auth: AuthState;
@@ -29,6 +31,9 @@ interface AuthenticatedAppProps {
   globalLock: boolean;
   onGlobalLockChange: (on: boolean) => void;
   globalLockVersion: number;
+  themes: NamedTheme[];
+  globalTheme: string | null;
+  onGlobalThemeChange: (name: string | null) => void;
 }
 
 function AuthenticatedApp({
@@ -50,6 +55,9 @@ function AuthenticatedApp({
   globalLock,
   onGlobalLockChange,
   globalLockVersion,
+  themes,
+  globalTheme,
+  onGlobalThemeChange,
 }: AuthenticatedAppProps) {
   const { activePane } = useWorkspacePane();
 
@@ -69,6 +77,9 @@ function AuthenticatedApp({
         onGlobalAutoScrollChange={onGlobalAutoScrollChange}
         globalLock={globalLock}
         onGlobalLockChange={onGlobalLockChange}
+        themes={themes}
+        globalTheme={globalTheme}
+        onGlobalThemeChange={onGlobalThemeChange}
       />
 
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -83,6 +94,8 @@ function AuthenticatedApp({
             globalLock={globalLock}
             globalLockVersion={globalLockVersion}
             onGlobalLockChange={onGlobalLockChange}
+            themes={themes}
+            globalTheme={globalTheme}
           />
         </div>
         <div style={{ display: activePane === 'desktops' ? 'flex' : 'none', height: '100%', flexDirection: 'column' }}>
@@ -126,6 +139,8 @@ export default function App() {
   const [globalAutoScrollVersion, setGlobalAutoScrollVersion] = useState(0);
   const [globalLock, setGlobalLock] = useState(false);
   const [globalLockVersion, setGlobalLockVersion] = useState(0);
+  const [themes, setThemes] = useState<NamedTheme[]>([]);
+  const [globalTheme, setGlobalTheme] = useState<string | null>(() => loadGlobalTheme());
 
   const currentUser = useMemo(() => auth.isAuthenticated ? parseTokenUser() : null, [auth.isAuthenticated]);
 
@@ -136,6 +151,12 @@ export default function App() {
       setTermCols(config.app.default_term.cols);
       setTermRows(config.app.default_term.rows);
     }).catch(() => {});
+    loadBundledThemes().then(setThemes).catch(() => {});
+  }, []);
+
+  const handleGlobalThemeChange = useCallback((name: string | null) => {
+    setGlobalTheme(name);
+    saveGlobalTheme(name);
   }, []);
 
   const handleFontSizeChange = useCallback((size: number) => {
@@ -194,6 +215,9 @@ export default function App() {
             setGlobalLockVersion(v => v + 1);
           }}
           globalLockVersion={globalLockVersion}
+          themes={themes}
+          globalTheme={globalTheme}
+          onGlobalThemeChange={handleGlobalThemeChange}
         />
       </WorkspacePaneProvider>
     </InputBroadcastProvider>
