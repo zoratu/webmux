@@ -211,6 +211,45 @@ func TestConcurrentGridAllocationAndOwnerCompaction(t *testing.T) {
 	}
 }
 
+// Minimizing a tile must compact the remaining visible tiles so it does not
+// leave an empty cell behind (which otherwise makes survivors appear shifted),
+// while the minimized tile keeps its flag and the row structure is preserved.
+func TestMinimizeCompactsVisibleTiles(t *testing.T) {
+	b, _, _ := fixture(t)
+	left := create(t, b, "owner")
+	middle := create(t, b, "owner")
+	right := create(t, b, "owner")
+	// Three fresh tiles fill the first row left-to-right.
+	if left.Col != 0 || middle.Col != 1 || right.Col != 2 {
+		t.Fatalf("unexpected initial layout: %d %d %d", left.Col, middle.Col, right.Col)
+	}
+
+	minimized := true
+	patched, err := b.Patch("owner", middle.ID, Patch{Minimized: &minimized})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !patched.Minimized {
+		t.Fatal("tile was not minimized")
+	}
+
+	// The right tile slides into the gap; the left tile stays put.
+	leftNow, _ := b.Get("owner", left.ID)
+	rightNow, _ := b.Get("owner", right.ID)
+	if leftNow.Row != 0 || leftNow.Col != 0 {
+		t.Fatalf("left tile moved: row=%d col=%d", leftNow.Row, leftNow.Col)
+	}
+	if rightNow.Row != 0 || rightNow.Col != 1 {
+		t.Fatalf("right tile did not fill the gap: row=%d col=%d", rightNow.Row, rightNow.Col)
+	}
+	// No visible tile should sit beyond the compacted range (no leftover gap).
+	for _, s := range b.List("owner") {
+		if !s.Minimized && s.Col > 1 {
+			t.Fatalf("visible tile left a gap: id=%s col=%d", s.ID, s.Col)
+		}
+	}
+}
+
 func TestSessionRestartAndPasswordNotPersisted(t *testing.T) {
 	b, store, launched := fixture(t)
 	s, err := b.Create("owner", CreateRequest{Hostname: "localhost", Username: "alice", Password: "fixture-secret"})

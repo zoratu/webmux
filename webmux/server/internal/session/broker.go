@@ -179,6 +179,21 @@ func (b *Broker) ownerEntriesLocked(owner string) []*entry {
 	}
 	return result
 }
+
+// visibleOwnerEntriesLocked is like ownerEntriesLocked but also excludes
+// minimized tiles, which are not rendered in the grid. Compaction operates on
+// this set so a minimized (or just-removed) tile never leaves an empty cell
+// that makes the remaining tiles appear shifted.
+func (b *Broker) visibleOwnerEntriesLocked(owner string) []*entry {
+	result := []*entry{}
+	for _, id := range b.order {
+		e := b.entries[id]
+		if e.value.Owner == owner && !e.value.Agent() && !e.value.Minimized {
+			result = append(result, e)
+		}
+	}
+	return result
+}
 func (b *Broker) List(owner string) []Session {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -445,9 +460,20 @@ func (b *Broker) Patch(owner, id string, patch Patch) (Session, error) {
 		return Session{}, err
 	}
 	old := e.value
+	oldPositions := map[*entry][2]int{}
 	switch {
 	case patch.Minimized != nil:
 		e.value.Minimized = *patch.Minimized
+		if *patch.Minimized && !e.value.Agent() {
+			// Minimizing pulls this tile out of the grid; compact the remaining
+			// visible tiles so it does not leave an empty cell behind (same as
+			// closing a tile). Row structure is preserved by compact().
+			items := b.visibleOwnerEntriesLocked(owner)
+			for _, item := range items {
+				oldPositions[item] = [2]int{item.value.Row, item.value.Col}
+			}
+			compact(items)
+		}
 	case patch.Title != nil:
 		title := config.TrimSpace(*patch.Title)
 		if len(utf16.Encode([]rune(title))) < 1 || len(utf16.Encode([]rune(title))) > 128 {
@@ -473,6 +499,9 @@ func (b *Broker) Patch(owner, id string, patch Patch) (Session, error) {
 	e.value.UpdatedAt = now()
 	if err := b.persistLocked(); err != nil {
 		e.value = old
+		for item, pos := range oldPositions {
+			item.value.Row, item.value.Col = pos[0], pos[1]
+		}
 		return Session{}, err
 	}
 	return e.value.clone(), nil
@@ -497,7 +526,7 @@ func (b *Broker) deleteSession(owner, id string, code int, reason string) error 
 	delete(b.entries, id)
 	b.order = slices.DeleteFunc(b.order, func(value string) bool { return value == id })
 	if !e.value.Agent() {
-		items := b.ownerEntriesLocked(owner)
+		items := b.visibleOwnerEntriesLocked(owner)
 		for _, item := range items {
 			oldPositions[item] = [2]int{item.value.Row, item.value.Col}
 		}

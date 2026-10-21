@@ -339,7 +339,13 @@ export function Workspace({
         api.setMinimized(sessionId, false).catch(err => setOperationError(`Could not restore session: ${String(err)}`));
       } else {
         next.add(sessionId);
-        api.setMinimized(sessionId, true).catch(err => setOperationError(`Could not minimize session: ${String(err)}`));
+        // The server compacts the remaining visible tiles when a tile is
+        // minimized; re-fetch so the filled-in layout is reflected (mirrors
+        // handleClose).
+        api.setMinimized(sessionId, true)
+          .then(() => api.getSessions())
+          .then(setSessions)
+          .catch(err => setOperationError(`Could not minimize session: ${String(err)}`));
       }
       return next;
     });
