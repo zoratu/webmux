@@ -186,7 +186,10 @@ export const Terminal = forwardRef<TerminalHandle, TerminalProps>(function Termi
     },
     // webmux-local: touch-scroll (docs/LOCAL_PATCHES.md)
     scrollPages: (delta: number) => {
-      if (termRef.current) scrollTerminalPages(termRef.current, delta, userScrolledRef);
+      if (termRef.current) {
+        scrollTerminalPages(termRef.current, delta, userScrolledRef,
+          (data) => wsHandleRef.current?.send({ type: 'input', data }));
+      }
     },
     isAtBottom: () => !userScrolledRef.current,
     sendInput: (data: string) => {

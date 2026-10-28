@@ -39,6 +39,15 @@ is unreliable; the existing control only jumps to the bottom; shift-to-scroll ne
 Adds an up/down arrow strip on the tile's right edge (classic-xterm style), one screenful per tap,
 **shown only on touch viewports**.
 
+**Mode-aware scrolling (`terminalScroll.ts`):** the arrows pick the mechanism from
+`term.buffer.active.type`:
+- **Alternate screen** (full-screen app — Claude Code, vim, less, tmux): xterm keeps no scrollback, so
+  send **Page Up / Page Down** (`\x1b[5~` / `\x1b[6~`) to the session and let the app scroll its own
+  history. This is the common case for these users and the reason the first cut (xterm `scrollPages`
+  only) appeared to "do nothing."
+- **Normal screen** (plain shell): scroll xterm's own 5000-line scrollback via `term.scrollPages`,
+  keeping the auto-scroll-pause flag in sync with the wheel handler.
+
 **New files we own (no upstream conflict surface):**
 - `webmux/frontend/src/utils/terminalScroll.ts` — `scrollTerminalPages(term, delta, userScrolled)`:
   pages via xterm `scrollPages`, keeps the auto-scroll-pause flag consistent with the wheel handler.
