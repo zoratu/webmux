@@ -4,6 +4,8 @@ import { AuthHandoff } from './AuthHandoff';
 import { BrowserCompanion } from './BrowserCompanion';
 import { TerminalActions } from './TerminalActions';
 import { ReconnectOverlay } from './ReconnectOverlay';
+import { TerminalScrollStrip, SCROLL_STRIP_WIDTH } from './TerminalScrollStrip'; // webmux-local: touch-scroll
+import { useTouchLikeViewport } from '../utils/viewport'; // webmux-local: touch-scroll
 import { useInputBroadcast } from '../contexts/InputBroadcastContext';
 import { clipboardFiles } from '../utils/terminalClipboard';
 import type { Session, ConnectionState, NamedTheme } from '../types';
@@ -69,6 +71,7 @@ export function Tile({
   const isExcluded = broadcastExcluded.has(session.id);
   const termHandleRef = useRef<TerminalHandle>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const showScrollStrip = useTouchLikeViewport(); // webmux-local: touch-scroll
 
   const isFocused = focusedSessionId === session.id;
 
@@ -258,24 +261,29 @@ export function Tile({
         onCompanion={url => { setBrowserNavigation({ url }); setShowBrowser(true); }} />}
       {showBrowser && <BrowserCompanion session={session} navigation={browserNavigation} onHide={() => { setBrowserNavigation(null); setShowBrowser(false); termHandleRef.current?.focus(); }} />}
       <div style={{ ...styles.termContainer, display: collapsed ? 'none' : undefined }}>
-        {(state === 'disconnected' || state === 'error') && (
-          <ReconnectOverlay onReconnect={() => onReconnect(session.id)} />
-        )}
-        <Terminal
-          ref={termHandleRef}
-          onOpenLink={(url, requestId) => { setHandoff(previous => requestId && previous?.requestId === requestId ? previous : { url, requestId, key: Date.now() }); }}
-          sessionId={session.id}
-          fontSize={fontSize}
-          fontFamily={fontFamily}
-          state={state}
-          autoScroll={autoScroll}
-          onStateChange={handleStateChange}
-          onViewerUpdate={handleViewerUpdate}
-          onFocusGained={handleFocusGained}
-          theme={themes.find(t => t.name === (themeOverride ?? globalTheme))?.theme}
-          onBell={() => onBell?.(session.id)}
-          onTranscriptChange={setTranscriptEnabled}
-        />
+        {/* webmux-local: touch-scroll — inset the terminal region so the strip never overlaps text */}
+        <div style={{ ...styles.termRegion, right: showScrollStrip ? SCROLL_STRIP_WIDTH : 0 }}>
+          {(state === 'disconnected' || state === 'error') && (
+            <ReconnectOverlay onReconnect={() => onReconnect(session.id)} />
+          )}
+          <Terminal
+            ref={termHandleRef}
+            onOpenLink={(url, requestId) => { setHandoff(previous => requestId && previous?.requestId === requestId ? previous : { url, requestId, key: Date.now() }); }}
+            sessionId={session.id}
+            fontSize={fontSize}
+            fontFamily={fontFamily}
+            state={state}
+            autoScroll={autoScroll}
+            onStateChange={handleStateChange}
+            onViewerUpdate={handleViewerUpdate}
+            onFocusGained={handleFocusGained}
+            theme={themes.find(t => t.name === (themeOverride ?? globalTheme))?.theme}
+            onBell={() => onBell?.(session.id)}
+            onTranscriptChange={setTranscriptEnabled}
+          />
+        </div>
+        {/* webmux-local: touch-scroll strip */}
+        {showScrollStrip && <TerminalScrollStrip onScroll={d => termHandleRef.current?.scrollPages(d)} />}
       </div>
     </div>
   );
@@ -388,5 +396,12 @@ const styles: Record<string, React.CSSProperties> = {
     position: 'relative',
     flex: 1,
     overflow: 'hidden',
+  },
+  // webmux-local: touch-scroll — positioned region holding the terminal, inset when the strip shows
+  termRegion: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
   },
 };
