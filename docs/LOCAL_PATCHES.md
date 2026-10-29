@@ -36,8 +36,9 @@ files above. Verify these call sites still exist after an upstream merge.
 
 **Why:** on iPad/iOS Safari there was no reliable way to scroll terminal scrollback (xterm touch-drag
 is unreliable; the existing control only jumps to the bottom; shift-to-scroll needs a hardware key).
-Adds an up/down arrow strip on the tile's right edge (classic-xterm style), one screenful per tap,
-**shown only on touch viewports**.
+Adds a scroll strip on the tile's right edge, split into two equal half-height tap zones (top half =
+up, bottom half = down — large targets, no precise aiming), one screenful per tap, **shown only on
+touch viewports**.
 
 **Mode-aware scrolling (`terminalScroll.ts`):** the arrows pick the mechanism from
 `term.buffer.active.type`:

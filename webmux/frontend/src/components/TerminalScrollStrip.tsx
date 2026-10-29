@@ -9,9 +9,11 @@ interface TerminalScrollStripProps {
 }
 
 /**
- * A thin vertical strip pinned to the right edge of a terminal tile, with an
- * up arrow near the top and a down arrow near the bottom — classic-xterm style.
- * Used on touch devices where xterm's touch-drag scrollback is unreliable.
+ * A thin vertical strip pinned to the right edge of a terminal tile, split into
+ * two equal half-height tap zones: the whole top half scrolls up, the whole
+ * bottom half scrolls down (large, forgiving targets — no precise aiming). A
+ * faint divider separates the zones. Used on touch devices where xterm's
+ * touch-drag scrollback is unreliable.
  */
 export function TerminalScrollStrip({ onScroll }: TerminalScrollStripProps) {
   // Prevent the button from stealing focus/selection from the terminal on tap.
@@ -19,14 +21,14 @@ export function TerminalScrollStrip({ onScroll }: TerminalScrollStripProps) {
   return (
     <div style={styles.strip}>
       <button
-        style={styles.arrow}
+        style={{ ...styles.zone, ...styles.topZone }}
         onMouseDown={hold}
         onClick={() => onScroll(-1)}
         title="Scroll up"
         aria-label="Scroll up"
       >&#9650;</button>
       <button
-        style={styles.arrow}
+        style={styles.zone}
         onMouseDown={hold}
         onClick={() => onScroll(1)}
         title="Scroll down"
@@ -45,21 +47,26 @@ const styles: Record<string, React.CSSProperties> = {
     width: SCROLL_STRIP_WIDTH,
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     background: 'rgba(20, 20, 40, 0.55)',
     borderLeft: '1px solid #333366',
     zIndex: 5,
   },
-  arrow: {
+  // Each zone fills half the strip height and is tappable anywhere within it.
+  zone: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
     background: 'none',
     border: 'none',
     color: '#8888cc',
     fontSize: 12,
     lineHeight: 1,
     cursor: 'pointer',
-    padding: '6px 0',
+    padding: 0,
     width: '100%',
-    flex: '0 0 auto',
+  },
+  topZone: {
+    borderBottom: '1px solid #333366',
   },
 };
